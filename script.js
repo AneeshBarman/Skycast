@@ -1,8 +1,835 @@
-const form=document.querySelector('#search-form'),input=document.querySelector('#city-input'),button=document.querySelector('#search-button'),status=document.querySelector('#status-message'),dashboard=document.querySelector('#overview'),unitButton=document.querySelector('#unit-toggle');let fahrenheit=false,last=null;
-const conditions={0:['Clear sky','sunny'],1:['Mainly clear','sunny'],2:['Partly cloudy','cloudy'],3:['Overcast','cloudy'],45:['Fog','cloudy'],48:['Rime fog','cloudy'],51:['Light drizzle','rain'],53:['Moderate drizzle','rain'],55:['Dense drizzle','rain'],56:['Freezing drizzle','rain'],57:['Dense freezing drizzle','rain'],61:['Slight rain','rain'],63:['Moderate rain','rain'],65:['Heavy rain','rain'],66:['Freezing rain','rain'],67:['Heavy freezing rain','rain'],71:['Light snow','snow'],73:['Moderate snow','snow'],75:['Heavy snow','snow'],77:['Snow grains','snow'],80:['Rain showers','rain'],81:['Moderate rain showers','rain'],82:['Heavy rain showers','storm'],85:['Snow showers','snow'],86:['Heavy snow showers','snow'],95:['Thunderstorm','storm'],96:['Thunderstorm with hail','storm'],99:['Thunderstorm with heavy hail','storm']};
-function info(code){return conditions[code]||['Conditions unavailable','cloudy']}function gif(code){return `assets/weather-${info(code)[1]}.gif`}function temp(c){return Math.round(fahrenheit?c*9/5+32:c)}function unit(){return fahrenheit?'°F':'°C'}function message(t,err=false){status.textContent=t;status.classList.toggle('error',err)}async function json(url){const r=await fetch(url);if(!r.ok)throw Error('Weather service error. Please try again.');return r.json()}
-async function locate(name){let u=new URL('https://geocoding-api.open-meteo.com/v1/search');u.search=new URLSearchParams({name,count:'1',language:'en',format:'json'});return (await json(u)).results?.[0]||null}async function forecast(lat,lon){let u=new URL('https://api.open-meteo.com/v1/forecast');u.search=new URLSearchParams({latitude:lat,longitude:lon,current:'temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,uv_index',hourly:'temperature_2m,precipitation_probability,weather_code',daily:'weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max',forecast_days:'7',forecast_hours:'24',timezone:'auto',temperature_unit:'celsius',wind_speed_unit:'kmh'});return json(u)}function time(s){return new Date(s).toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'})}function day(s,i){if(i===0)return'Today';let [y,m,d]=s.split('-').map(Number);return new Date(y,m-1,d).toLocaleDateString(undefined,{weekday:'long'})}function uvText(n){if(n==null)return'UV data unavailable';if(n<3)return'Low UV exposure';if(n<6)return'Moderate UV exposure';if(n<8)return'High UV exposure';if(n<11)return'Very high UV exposure';return'Extreme UV exposure'}function direction(n){return['N','NE','E','SE','S','SW','W','NW'][Math.round(n/45)%8]}function insight(c){if(c.weather_code>=51)return'Clouds or precipitation are expected. Consider carrying an umbrella if you head out.';if(c.temperature_2m>=32)return'It is a warm day. Drink water regularly and plan outdoor activities around the heat.';if(c.wind_speed_10m>=25)return'It is breezy right now. Keep the wind in mind when planning outdoor activities.';if(c.uv_index>=6)return'UV levels are elevated. Consider shade and sun protection if you are outdoors.';return'Conditions look relatively calm. Check the hourly outlook before making plans.'}
-function renderHourly(h,current){let list=document.querySelector('#hourly-list');list.replaceChildren();let start=h.time.findIndex(t=>new Date(t)>=new Date(current));if(start<0)start=0;for(let i=start;i<Math.min(start+12,h.time.length);i++){let card=document.createElement('article');card.className='hour-card';let t=document.createElement('span');t.className='hour-time';t.textContent=i===start?'Now':time(h.time[i]);let im=document.createElement('img');im.className='hour-weather';im.src=gif(h.weather_code[i]);im.alt=info(h.weather_code[i])[0];let v=document.createElement('span');v.className='hour-temp';v.textContent=`${temp(h.temperature_2m[i])}${unit()}`;let rain=document.createElement('span');rain.className='hour-rain';rain.textContent=`☂ ${h.precipitation_probability[i]??0}%`;card.append(t,im,v,rain);list.append(card)}}
-function renderDays(d){let list=document.querySelector('#weekly-list');list.replaceChildren();d.time.forEach((date,i)=>{let row=document.createElement('div');row.className='week-row';let dn=document.createElement('div');dn.className='week-day';dn.textContent=day(date,i);let c=document.createElement('div');c.className='week-condition';let im=document.createElement('img');im.src=gif(d.weather_code[i]);im.alt='';let desc=document.createElement('span');desc.textContent=info(d.weather_code[i])[0];c.append(im,desc);let temps=document.createElement('div');temps.className='week-temps';let hi=document.createElement('span');hi.textContent=`${temp(d.temperature_2m_max[i])}${unit()}`;let lo=document.createElement('span');lo.className='week-low';lo.textContent=`${temp(d.temperature_2m_min[i])}${unit()}`;temps.append(hi,lo);let rain=document.createElement('div');rain.className='week-rain';rain.textContent=`☂ ${d.precipitation_probability_max?.[i]??0}%`;row.append(dn,c,temps,rain);list.append(row)})}
-function render(city,data){last={city,data};let c=data.current,d=data.daily,inf=info(c.weather_code);document.querySelector('#location-name').textContent=[city.name,city.admin1,city.country].filter((v,i,a)=>v&&a.indexOf(v)===i).join(', ');document.querySelector('#local-time').textContent=`Local time · ${time(c.time)}`;document.querySelector('#current-temperature').textContent=`${temp(c.temperature_2m)}${unit()}`;document.querySelector('#weather-description').textContent=inf[0];document.querySelector('#feels-like').textContent=`Feels like ${temp(c.apparent_temperature)}${unit()}`;document.querySelector('#day-summary').textContent=insight(c);document.querySelector('#today-high').textContent=`${temp(d.temperature_2m_max[0])}${unit()}`;document.querySelector('#today-low').textContent=`${temp(d.temperature_2m_min[0])}${unit()}`;document.querySelector('#humidity').textContent=`${c.relative_humidity_2m}%`;document.querySelector('#humidity-bar').style.width=`${Math.min(100,Math.max(0,c.relative_humidity_2m))}%`;document.querySelector('#wind-speed').textContent=`${Math.round(c.wind_speed_10m)} km/h`;document.querySelector('#wind-direction').textContent=`Direction ${direction(c.wind_direction_10m)} · ${Math.round(c.wind_direction_10m)}°`;document.querySelector('#precipitation').textContent=`${Number(c.precipitation).toFixed(1)} mm`;document.querySelector('#uv-index').textContent=c.uv_index==null?'—':Number(c.uv_index).toFixed(1);document.querySelector('#uv-label').textContent=uvText(c.uv_index);document.querySelector('#weather-tip').textContent=insight(c);let image=document.querySelector('#weather-animation');image.src=gif(c.weather_code);image.alt=`Animated ${inf[1]} weather illustration`;document.querySelector('#animation-caption').textContent=inf[1]==='sunny'?'SUNLIT SKIES':inf[1]==='cloudy'?'CLOUD COVER':inf[1]==='rain'?'RAIN IN MOTION':inf[1]==='snow'?'FALLING SNOW':'STORM WATCH';renderHourly(data.hourly,c.time);renderDays(d);dashboard.classList.remove('hidden')}
-form.addEventListener('submit',async e=>{e.preventDefault();let name=input.value.trim();if(!name){message('Please enter a city name.',true);return}button.disabled=true;button.textContent='Loading…';message('Finding your location and loading forecast…');try{let city=await locate(name);if(!city){dashboard.classList.add('hidden');message('City not found. Check the spelling and try again.',true);return}let data=await forecast(city.latitude,city.longitude);if(!data.current||!data.daily||!data.hourly)throw Error('Weather data was incomplete. Please try again.');render(city,data);message(`Weather loaded for ${city.name}.`)}catch(err){dashboard.classList.add('hidden');message(err.message||'Could not load weather. Check your connection and try again.',true)}finally{button.disabled=false;button.textContent='Search ↗'}});unitButton.addEventListener('click',()=>{fahrenheit=!fahrenheit;unitButton.innerHTML=fahrenheit?'°F <small>/ °C</small>':'°C <small>/ °F</small>';if(last)render(last.city,last.data)});
+// ============================================
+// SKYCAST PRO - WEATHER DASHBOARD
+// Live City Autocomplete + Weather Forecasts
+// ============================================
+
+const form = document.querySelector('#search-form');
+const input = document.querySelector('#city-input');
+const button = document.querySelector('#search-button');
+const status = document.querySelector('#status-message');
+const dashboard = document.querySelector('#overview');
+const unitButton = document.querySelector('#unit-toggle');
+
+let fahrenheit = false;
+let last = null;
+
+// Autocomplete variables
+let suggestionBox = null;
+let suggestionTimer = null;
+let selectedCity = null;
+let activeSuggestion = -1;
+let currentSuggestions = [];
+let suggestionRequestId = 0;
+
+
+// ============================================
+// WEATHER CONDITIONS
+// ============================================
+
+const conditions = {
+    0: ['Clear sky', 'sunny'],
+    1: ['Mainly clear', 'sunny'],
+    2: ['Partly cloudy', 'cloudy'],
+    3: ['Overcast', 'cloudy'],
+    45: ['Fog', 'cloudy'],
+    48: ['Rime fog', 'cloudy'],
+    51: ['Light drizzle', 'rain'],
+    53: ['Moderate drizzle', 'rain'],
+    55: ['Dense drizzle', 'rain'],
+    56: ['Freezing drizzle', 'rain'],
+    57: ['Dense freezing drizzle', 'rain'],
+    61: ['Slight rain', 'rain'],
+    63: ['Moderate rain', 'rain'],
+    65: ['Heavy rain', 'rain'],
+    66: ['Freezing rain', 'rain'],
+    67: ['Heavy freezing rain', 'rain'],
+    71: ['Light snow', 'snow'],
+    73: ['Moderate snow', 'snow'],
+    75: ['Heavy snow', 'snow'],
+    77: ['Snow grains', 'snow'],
+    80: ['Rain showers', 'rain'],
+    81: ['Moderate rain showers', 'rain'],
+    82: ['Heavy rain showers', 'storm'],
+    85: ['Snow showers', 'snow'],
+    86: ['Heavy snow showers', 'snow'],
+    95: ['Thunderstorm', 'storm'],
+    96: ['Thunderstorm with hail', 'storm'],
+    99: ['Thunderstorm with heavy hail', 'storm']
+};
+
+
+// ============================================
+// HELPER FUNCTIONS
+// ============================================
+
+function info(code) {
+    return conditions[code] || ['Conditions unavailable', 'cloudy'];
+}
+
+function gif(code) {
+    return `assets/weather-${info(code)[1]}.gif`;
+}
+
+function temp(celsius) {
+    return Math.round(
+        fahrenheit ? celsius * 9 / 5 + 32 : celsius
+    );
+}
+
+function unit() {
+    return fahrenheit ? '°F' : '°C';
+}
+
+function message(text, error = false) {
+    status.textContent = text;
+    status.classList.toggle('error', error);
+}
+
+async function json(url) {
+    const response = await fetch(url);
+
+    if (!response.ok) {
+        throw new Error(
+            'Weather service error. Please try again.'
+        );
+    }
+
+    return response.json();
+}
+
+
+// ============================================
+// CITY SEARCH
+// ============================================
+
+// Search for a city by name
+async function locate(name) {
+    const url = new URL(
+        'https://geocoding-api.open-meteo.com/v1/search'
+    );
+
+    url.search = new URLSearchParams({
+        name: name,
+        count: '1',
+        language: 'en',
+        format: 'json'
+    });
+
+    const result = await json(url);
+
+    return result.results?.[0] || null;
+}
+
+
+// ============================================
+// LIVE CITY AUTOCOMPLETE
+// ============================================
+
+// Create the suggestions dropdown
+function createSuggestionBox() {
+    if (suggestionBox) return;
+
+    suggestionBox = document.createElement('div');
+    suggestionBox.id = 'city-suggestions';
+    suggestionBox.setAttribute('role', 'listbox');
+
+    Object.assign(suggestionBox.style, {
+        position: 'absolute',
+        top: '100%',
+        left: '0',
+        right: '0',
+        background: '#ffffff',
+        color: '#29251f',
+        border: '1px solid #ded6c9',
+        borderRadius: '12px',
+        boxShadow: '0 10px 25px rgba(0, 0, 0, 0.12)',
+        overflowY: 'auto',
+        maxHeight: '260px',
+        zIndex: '9999',
+        display: 'none'
+    });
+
+    // Position suggestions relative to the input container.
+    const parent = input.parentElement;
+    parent.style.position = 'relative';
+    parent.appendChild(suggestionBox);
+}
+
+
+// Hide the suggestions
+function hideSuggestions() {
+    if (suggestionBox) {
+        suggestionBox.style.display = 'none';
+    }
+
+    activeSuggestion = -1;
+    input.removeAttribute('aria-activedescendant');
+}
+
+
+// Highlight the active suggestion
+function highlightSuggestion() {
+    if (!suggestionBox) return;
+
+    const items = Array.from(suggestionBox.children);
+
+    items.forEach((item, index) => {
+        const isActive = index === activeSuggestion;
+
+        item.style.background = isActive
+            ? '#f3ede3'
+            : '#ffffff';
+
+        item.setAttribute(
+            'aria-selected',
+            String(isActive)
+        );
+    });
+
+    if (activeSuggestion >= 0 && items[activeSuggestion]) {
+        input.setAttribute(
+            'aria-activedescendant',
+            items[activeSuggestion].id
+        );
+
+        items[activeSuggestion].scrollIntoView({
+            block: 'nearest'
+        });
+    } else {
+        input.removeAttribute('aria-activedescendant');
+    }
+}
+
+
+// Select a city from the suggestions
+function selectCity(city) {
+    selectedCity = city;
+
+    input.value = city.name;
+
+    hideSuggestions();
+
+    message(
+        `Selected ${city.name}. Press Search to load its weather.`
+    );
+}
+
+
+// Display matching cities
+function showSuggestions(cities) {
+    createSuggestionBox();
+
+    suggestionBox.replaceChildren();
+
+    currentSuggestions = cities;
+    activeSuggestion = -1;
+
+    if (!cities.length) {
+        hideSuggestions();
+        return;
+    }
+
+    cities.forEach((city, index) => {
+        const item = document.createElement('button');
+
+        item.type = 'button';
+        item.id = `city-suggestion-${index}`;
+        item.setAttribute('role', 'option');
+        item.setAttribute('aria-selected', 'false');
+
+        const locationParts = [
+            city.name,
+            city.admin1,
+            city.country
+        ].filter((value, i, array) => {
+            return value && array.indexOf(value) === i;
+        });
+
+        item.textContent = locationParts.join(', ');
+
+        Object.assign(item.style, {
+            display: 'block',
+            width: '100%',
+            padding: '12px 15px',
+            border: 'none',
+            borderBottom: '1px solid #eee8df',
+            background: '#ffffff',
+            color: '#29251f',
+            textAlign: 'left',
+            cursor: 'pointer',
+            fontSize: '14px',
+            lineHeight: '1.5'
+        });
+
+        item.addEventListener('mouseenter', () => {
+            activeSuggestion = index;
+            highlightSuggestion();
+        });
+
+        item.addEventListener('focus', () => {
+            activeSuggestion = index;
+            highlightSuggestion();
+        });
+
+        // Prevent the input from losing focus before selection.
+        item.addEventListener('mousedown', event => {
+            event.preventDefault();
+            selectCity(city);
+        });
+
+        // Support touchscreens and other pointer devices.
+        item.addEventListener('click', () => {
+            selectCity(city);
+        });
+
+        suggestionBox.appendChild(item);
+    });
+
+    suggestionBox.style.display = 'block';
+}
+
+
+// Fetch suggestions while the user types
+async function searchCitySuggestions(query) {
+    const searchTerm = query.trim();
+    const requestId = ++suggestionRequestId;
+
+    if (searchTerm.length < 2) {
+        hideSuggestions();
+        return;
+    }
+
+    try {
+        const url = new URL(
+            'https://geocoding-api.open-meteo.com/v1/search'
+        );
+
+        url.search = new URLSearchParams({
+            name: searchTerm,
+            count: '8',
+            language: 'en',
+            format: 'json'
+        });
+
+        const response = await json(url);
+
+        // Ignore results from older requests.
+        if (requestId !== suggestionRequestId) return;
+
+        // Only show results for the current input.
+        if (input.value.trim() !== searchTerm) return;
+
+        const cities = response.results || [];
+
+        if (cities.length === 0) {
+            hideSuggestions();
+            return;
+        }
+
+        showSuggestions(cities);
+
+    } catch (error) {
+        if (requestId === suggestionRequestId) {
+            hideSuggestions();
+        }
+    }
+}
+
+
+// Initialize autocomplete
+createSuggestionBox();
+
+input.setAttribute('autocomplete', 'off');
+input.setAttribute('role', 'combobox');
+input.setAttribute('aria-autocomplete', 'list');
+input.setAttribute('aria-controls', 'city-suggestions');
+input.setAttribute('aria-expanded', 'false');
+
+
+// Listen for typing
+input.addEventListener('input', () => {
+    selectedCity = null;
+
+    clearTimeout(suggestionTimer);
+
+    // Invalidate any previous search request.
+    suggestionRequestId++;
+
+    const query = input.value.trim();
+
+    if (query.length < 2) {
+        hideSuggestions();
+        return;
+    }
+
+    suggestionTimer = setTimeout(() => {
+        searchCitySuggestions(query);
+    }, 300);
+});
+
+
+// Keyboard navigation through suggestions
+input.addEventListener('keydown', event => {
+    const dropdownIsOpen =
+        suggestionBox &&
+        suggestionBox.style.display !== 'none' &&
+        currentSuggestions.length > 0;
+
+    if (event.key === 'Escape') {
+        hideSuggestions();
+        return;
+    }
+
+    if (!dropdownIsOpen) return;
+
+    if (event.key === 'ArrowDown') {
+        event.preventDefault();
+
+        activeSuggestion =
+            (activeSuggestion + 1) % currentSuggestions.length;
+
+        highlightSuggestion();
+    }
+
+    if (event.key === 'ArrowUp') {
+        event.preventDefault();
+
+        activeSuggestion =
+            activeSuggestion <= 0
+                ? currentSuggestions.length - 1
+                : activeSuggestion - 1;
+
+        highlightSuggestion();
+    }
+
+    if (
+        event.key === 'Enter' &&
+        activeSuggestion >= 0
+    ) {
+        event.preventDefault();
+
+        selectCity(
+            currentSuggestions[activeSuggestion]
+        );
+    }
+});
+
+
+// Close suggestions when clicking outside
+document.addEventListener('click', event => {
+    if (
+        suggestionBox &&
+        !input.contains(event.target) &&
+        !suggestionBox.contains(event.target)
+    ) {
+        hideSuggestions();
+    }
+});
+
+
+// ============================================
+// WEATHER FORECAST API
+// ============================================
+
+async function forecast(latitude, longitude) {
+    const url = new URL(
+        'https://api.open-meteo.com/v1/forecast'
+    );
+
+    url.search = new URLSearchParams({
+        latitude: latitude,
+        longitude: longitude,
+
+        current:
+            'temperature_2m,relative_humidity_2m,' +
+            'apparent_temperature,precipitation,' +
+            'weather_code,wind_speed_10m,' +
+            'wind_direction_10m,uv_index',
+
+        hourly:
+            'temperature_2m,precipitation_probability,' +
+            'weather_code',
+
+        daily:
+            'weather_code,temperature_2m_max,' +
+            'temperature_2m_min,precipitation_probability_max',
+
+        forecast_days: '7',
+        forecast_hours: '24',
+        timezone: 'auto',
+        temperature_unit: 'celsius',
+        wind_speed_unit: 'kmh'
+    });
+
+    return json(url);
+}
+
+
+// ============================================
+// DATE AND WEATHER HELPERS
+// ============================================
+
+function time(value) {
+    return new Date(value).toLocaleTimeString(
+        undefined,
+        {
+            hour: 'numeric',
+            minute: '2-digit'
+        }
+    );
+}
+
+function day(date, index) {
+    if (index === 0) return 'Today';
+
+    const [year, month, dateNumber] = date
+        .split('-')
+        .map(Number);
+
+    return new Date(
+        year,
+        month - 1,
+        dateNumber
+    ).toLocaleDateString(
+        undefined,
+        { weekday: 'long' }
+    );
+}
+
+function uvText(value) {
+    if (value == null) return 'UV data unavailable';
+
+    if (value < 3) return 'Low UV exposure';
+    if (value < 6) return 'Moderate UV exposure';
+    if (value < 8) return 'High UV exposure';
+    if (value < 11) return 'Very high UV exposure';
+
+    return 'Extreme UV exposure';
+}
+
+function direction(degrees) {
+    return [
+        'N', 'NE', 'E', 'SE',
+        'S', 'SW', 'W', 'NW'
+    ][Math.round(degrees / 45) % 8];
+}
+
+function insight(current) {
+    if (current.weather_code >= 51) {
+        return 'Clouds or precipitation are expected. Consider carrying an umbrella if you head out.';
+    }
+
+    if (current.temperature_2m >= 32) {
+        return 'It is a warm day. Drink water regularly and plan outdoor activities around the heat.';
+    }
+
+    if (current.wind_speed_10m >= 25) {
+        return 'It is breezy right now. Keep the wind in mind when planning outdoor activities.';
+    }
+
+    if (current.uv_index >= 6) {
+        return 'UV levels are elevated. Consider shade and sun protection if you are outdoors.';
+    }
+
+    return 'Conditions look relatively calm. Check the hourly outlook before making plans.';
+}
+
+
+// ============================================
+// RENDER HOURLY FORECAST
+// ============================================
+
+function renderHourly(hourly, currentTime) {
+    const list = document.querySelector('#hourly-list');
+
+    list.replaceChildren();
+
+    let start = hourly.time.findIndex(value => {
+        return new Date(value) >= new Date(currentTime);
+    });
+
+    if (start < 0) start = 0;
+
+    for (
+        let i = start;
+        i < Math.min(start + 12, hourly.time.length);
+        i++
+    ) {
+        const card = document.createElement('article');
+        card.className = 'hour-card';
+
+        const timeLabel = document.createElement('span');
+        timeLabel.className = 'hour-time';
+        timeLabel.textContent =
+            i === start ? 'Now' : time(hourly.time[i]);
+
+        const image = document.createElement('img');
+        image.className = 'hour-weather';
+        image.src = gif(hourly.weather_code[i]);
+        image.alt = info(hourly.weather_code[i])[0];
+
+        const temperature = document.createElement('span');
+        temperature.className = 'hour-temp';
+        temperature.textContent =
+            `${temp(hourly.temperature_2m[i])}${unit()}`;
+
+        const rain = document.createElement('span');
+        rain.className = 'hour-rain';
+        rain.textContent =
+            `☂ ${hourly.precipitation_probability[i] ?? 0}%`;
+
+        card.append(
+            timeLabel,
+            image,
+            temperature,
+            rain
+        );
+
+        list.append(card);
+    }
+}
+
+
+// ============================================
+// RENDER 7-DAY FORECAST
+// ============================================
+
+function renderDays(daily) {
+    const list = document.querySelector('#weekly-list');
+
+    list.replaceChildren();
+
+    daily.time.forEach((date, index) => {
+        const row = document.createElement('div');
+        row.className = 'week-row';
+
+        const dayName = document.createElement('div');
+        dayName.className = 'week-day';
+        dayName.textContent = day(date, index);
+
+        const condition = document.createElement('div');
+        condition.className = 'week-condition';
+
+        const image = document.createElement('img');
+        image.src = gif(daily.weather_code[index]);
+        image.alt = '';
+
+        const description = document.createElement('span');
+        description.textContent =
+            info(daily.weather_code[index])[0];
+
+        condition.append(image, description);
+
+        const temperatures = document.createElement('div');
+        temperatures.className = 'week-temps';
+
+        const high = document.createElement('span');
+        high.textContent =
+            `${temp(daily.temperature_2m_max[index])}${unit()}`;
+
+        const low = document.createElement('span');
+        low.className = 'week-low';
+        low.textContent =
+            `${temp(daily.temperature_2m_min[index])}${unit()}`;
+
+        temperatures.append(high, low);
+
+        const rain = document.createElement('div');
+        rain.className = 'week-rain';
+        rain.textContent =
+            `☂ ${daily.precipitation_probability_max?.[index] ?? 0}%`;
+
+        row.append(
+            dayName,
+            condition,
+            temperatures,
+            rain
+        );
+
+        list.append(row);
+    });
+}
+
+
+// ============================================
+// RENDER WEATHER DASHBOARD
+// ============================================
+
+function render(city, data) {
+    last = { city, data };
+
+    const current = data.current;
+    const daily = data.daily;
+    const weatherInfo = info(current.weather_code);
+
+    document.querySelector('#location-name').textContent = [
+        city.name,
+        city.admin1,
+        city.country
+    ]
+        .filter((value, index, array) => {
+            return value && array.indexOf(value) === index;
+        })
+        .join(', ');
+
+    document.querySelector('#local-time').textContent =
+        `Local time · ${time(current.time)}`;
+
+    document.querySelector('#current-temperature').textContent =
+        `${temp(current.temperature_2m)}${unit()}`;
+
+    document.querySelector('#weather-description').textContent =
+        weatherInfo[0];
+
+    document.querySelector('#feels-like').textContent =
+        `Feels like ${temp(current.apparent_temperature)}${unit()}`;
+
+    document.querySelector('#day-summary').textContent =
+        insight(current);
+
+    document.querySelector('#today-high').textContent =
+        `${temp(daily.temperature_2m_max[0])}${unit()}`;
+
+    document.querySelector('#today-low').textContent =
+        `${temp(daily.temperature_2m_min[0])}${unit()}`;
+
+    document.querySelector('#humidity').textContent =
+        `${current.relative_humidity_2m}%`;
+
+    document.querySelector('#humidity-bar').style.width =
+        `${Math.min(100, Math.max(0, current.relative_humidity_2m))}%`;
+
+    document.querySelector('#wind-speed').textContent =
+        `${Math.round(current.wind_speed_10m)} km/h`;
+
+    document.querySelector('#wind-direction').textContent =
+        `Direction ${direction(current.wind_direction_10m)} · ${Math.round(current.wind_direction_10m)}°`;
+
+    document.querySelector('#precipitation').textContent =
+        `${Number(current.precipitation).toFixed(1)} mm`;
+
+    document.querySelector('#uv-index').textContent =
+        current.uv_index == null
+            ? '—'
+            : Number(current.uv_index).toFixed(1);
+
+    document.querySelector('#uv-label').textContent =
+        uvText(current.uv_index);
+
+    document.querySelector('#weather-tip').textContent =
+        insight(current);
+
+    const image = document.querySelector('#weather-animation');
+
+    image.src = gif(current.weather_code);
+    image.alt = `Animated ${weatherInfo[1]} weather illustration`;
+
+    document.querySelector('#animation-caption').textContent =
+        weatherInfo[1] === 'sunny'
+            ? 'SUNLIT SKIES'
+            : weatherInfo[1] === 'cloudy'
+                ? 'CLOUD COVER'
+                : weatherInfo[1] === 'rain'
+                    ? 'RAIN IN MOTION'
+                    : weatherInfo[1] === 'snow'
+                        ? 'FALLING SNOW'
+                        : 'STORM WATCH';
+
+    renderHourly(data.hourly, current.time);
+    renderDays(daily);
+
+    dashboard.classList.remove('hidden');
+}
+
+
+// ============================================
+// SEARCH FORM SUBMISSION
+// ============================================
+
+form.addEventListener('submit', async event => {
+    event.preventDefault();
+
+    const name = input.value.trim();
+
+    if (!name) {
+        message('Please enter a city name.', true);
+        input.focus();
+        return;
+    }
+
+    // Use the selected autocomplete result when available.
+    const cityToLoad =
+        selectedCity && selectedCity.name === name
+            ? selectedCity
+            : null;
+
+    button.disabled = true;
+    button.textContent = 'Loading…';
+
+    hideSuggestions();
+
+    message('Finding your location and loading forecast…');
+
+    try {
+        const city = cityToLoad || await locate(name);
+
+        if (!city) {
+            dashboard.classList.add('hidden');
+
+            message(
+                'City not found. Check the spelling and try again.',
+                true
+            );
+
+            return;
+        }
+
+        const data = await forecast(
+            city.latitude,
+            city.longitude
+        );
+
+        if (!data.current || !data.daily || !data.hourly) {
+            throw new Error(
+                'Weather data was incomplete. Please try again.'
+            );
+        }
+
+        render(city, data);
+
+        // Keep the selected city for subsequent unit changes.
+        selectedCity = city;
+
+        message(`Weather loaded for ${city.name}.`);
+
+    } catch (error) {
+        dashboard.classList.add('hidden');
+
+        message(
+            error.message ||
+            'Could not load weather. Check your connection and try again.',
+            true
+        );
+
+    } finally {
+        button.disabled = false;
+        button.textContent = 'Search ↗';
+    }
+});
+
+
+// ============================================
+// CELSIUS / FAHRENHEIT TOGGLE
+// ============================================
+
+unitButton.addEventListener('click', () => {
+    fahrenheit = !fahrenheit;
+
+    unitButton.innerHTML = fahrenheit
+        ? '°F <small>/ °C</small>'
+        : '°C <small>/ °F</small>';
+
+    if (last) {
+        render(last.city, last.data);
+    }
+});
