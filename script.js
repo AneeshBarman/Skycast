@@ -1,6 +1,5 @@
 // ============================================
-// SKYCAST PRO - WEATHER DASHBOARD
-// Live City Autocomplete + Weather Forecasts
+// SKYCAST - WEATHER DASHBOARD
 // ============================================
 
 const form = document.querySelector('#search-form');
